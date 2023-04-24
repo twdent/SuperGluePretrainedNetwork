@@ -51,7 +51,7 @@ import numpy as np
 import matplotlib.cm as cm
 import torch
 
-
+import cv2
 from models.matching import Matching
 from models.utils import (compute_pose_error, compute_epipolar_error,
                           estimate_pose, make_matching_plot,
@@ -61,17 +61,32 @@ from models.utils import (compute_pose_error, compute_epipolar_error,
 
 torch.set_grad_enabled(False)
 
-
+def compute_homography_and_warp(pts_src, pts_dst, img,orig_img,viz_path):
+    """Compute homography and warp image."""
+    H, _ = cv2.findHomography(pts_src, pts_dst, cv2.RANSAC)
+    img_warped = cv2.warpPerspective(img, H, (img.shape[1], img.shape[0]))
+    #change color of warped image to green scale
+    # img_warped = cv2.cvtColor(img_warped, cv2.COLOR_BGR2GRAY)
+    img_warped = cv2.cvtColor(img_warped, cv2.COLOR_GRAY2BGR)
+    img_warped[:,:,0] = 0
+    # img_warped[:,:,2] = 0
+    orig_img = cv2.cvtColor(orig_img, cv2.COLOR_GRAY2BGR)
+    #overlay onto original image
+    img_warped = cv2.addWeighted(orig_img, 0.7, img_warped, 0.3, 0)
+    #save image
+    cv2.imwrite('./dump_match_pairs/warped_overlay3.png', img_warped)
+    return 
+    
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
         description='Image pair matching and pose evaluation with SuperGlue',
         formatter_class=argparse.ArgumentDefaultsHelpFormatter)
 
     parser.add_argument(
-        '--input_pairs', type=str, default='assets/scannet_sample_pairs_with_gt.txt',
+        '--input_pairs', type=str, default='assets/eth_pairs.txt',
         help='Path to the list of image pairs')
     parser.add_argument(
-        '--input_dir', type=str, default='assets/scannet_sample_images/',
+        '--input_dir', type=str, default='assets/opera_test/',
         help='Path to the directory that contains the images')
     parser.add_argument(
         '--output_dir', type=str, default='dump_match_pairs/',
@@ -141,6 +156,10 @@ if __name__ == '__main__':
         help='Force pytorch to run in CPU mode.')
 
     opt = parser.parse_args()
+    opt.viz = True
+    opt.superglue = 'outdoor'
+    opt.max_keypoints = 512
+
     print(opt)
 
     assert not (opt.opencv_display and not opt.viz), 'Must use --viz with --opencv_display'
@@ -230,6 +249,9 @@ if __name__ == '__main__':
 
                 kpts0, kpts1 = results['keypoints0'], results['keypoints1']
                 matches, conf = results['matches'], results['match_confidence']
+
+
+
                 do_match = False
             if opt.eval and eval_path.exists():
                 try:
@@ -360,7 +382,9 @@ if __name__ == '__main__':
                 image0, image1, kpts0, kpts1, mkpts0, mkpts1, color,
                 text, viz_path, opt.show_keypoints,
                 opt.fast_viz, opt.opencv_display, 'Matches', small_text)
-
+            
+            compute_homography_and_warp(mkpts0,mkpts1,image0,image1,viz_path)
+            
             timer.update('viz_match')
 
         if do_viz_eval:
